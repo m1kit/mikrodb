@@ -10,10 +10,13 @@ use std::io::prelude::*;
 use std::result::Result;
 use std::fmt::Debug;
 
+pub trait Key: Value + Ord {}
+pub trait Value: Debug + Clone + Serialize + DeserializeOwned {}
+
 pub struct Database<K, V>
 where
-    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
-    V: Debug + Clone + Serialize + DeserializeOwned,
+    K: Key,
+    V: Value,
 {
     wal: WALManager,
     datapath: String,
@@ -22,8 +25,8 @@ where
 
 pub struct Transaction<'tx, K, V>
 where
-    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
-    V: Debug + Clone + Serialize + DeserializeOwned,
+    K: Key,
+    V: Value,
 {
     database: &'tx mut Database<K, V>,
     writeset: BTreeMap<K, V>,
@@ -31,8 +34,8 @@ where
 
 impl<K, V> Database<K, V>
 where
-    K: Debug + Clone + DeserializeOwned + Serialize + Ord,
-    V: Debug + Clone + DeserializeOwned + Serialize,
+    K: Key,
+    V: Value,
 {
     pub fn new(logpath: &str, datapath: &str) -> Result<Self, DatabaseError> {
         let wal = WALManager::new(logpath)?;
@@ -116,8 +119,8 @@ where
 
 impl<K, V> Drop for Database<K, V>
 where
-    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
-    V: Debug + Clone + Serialize + DeserializeOwned,
+    K: Key,
+    V: Value,
 {
     fn drop(&mut self) {
         if let Result::Err(e) = self.exec_checkpointing() {
@@ -128,8 +131,8 @@ where
 
 impl<'tx, K, V> Transaction<'tx, K, V>
 where
-    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
-    V: Debug + Clone + Serialize + DeserializeOwned,
+    K: Key,
+    V: Value,
 {
     pub fn create(&mut self, key: K, value: V) -> Result<(), DatabaseError> {
         if self.writeset.contains_key(&key) {
@@ -202,8 +205,8 @@ where
 
 impl<'tx, K, V> Drop for Transaction<'tx, K, V>
 where
-    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
-    V: Debug + Clone + Serialize + DeserializeOwned,
+    K: Key,
+    V: Value,
 {
     fn drop(&mut self) {
         let log: LogRecord<K, V> = LogRecord::Abort;
