@@ -65,6 +65,7 @@ where
     }
 
     /// ファイルシステムおよびメモリ上からデータベースに関する内容を消去する
+    /// これはテスト用 or メンテナンス用ですね。
     pub fn clear(&mut self) -> Result<(), DatabaseError> {
         self.wal.clear()?;
         self.data.clear();
@@ -81,6 +82,8 @@ where
         let content = serde_json::to_string(&self.data)?;
         let content = content.as_bytes();
 
+        // ここは atomic に self.datapath ファイルを更新しないとダメですね。
+        // checkpoint 中に落ちたら一部または全部のデータが失われます。
         datafile.write_all(content)?;
         datafile.sync_all()?;
         self.wal.clear()?;
@@ -93,6 +96,7 @@ where
         let mut commit: VecDeque<LogRecord<K, V>> = VecDeque::new();
         for log in logs {
             match log {
+                // ちょっとインデント多いかなー。。。まあ長いコードではないので咎めるほどではないですが。
                 LogRecord::Commit => {
                     while let Option::Some(v) = commit.pop_front() {
                         match v {
@@ -123,7 +127,7 @@ where
     /// トランザクションを発行する
     pub fn begin_transaction<'tx>(&'tx mut self) -> Result<Transaction<'tx, K, V>, DatabaseError> {
         return Result::Ok(Transaction {
-            writeset: self.data.clone(),
+            writeset: self.data.clone(),  // うおおおおお
             database: self,
         });
     }

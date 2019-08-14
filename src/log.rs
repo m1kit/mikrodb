@@ -53,6 +53,8 @@ impl WALManager {
 
     /// WALマネージャにより管理されるログをファイルシステム上・メモリ上から破棄する
     pub fn clear(&mut self) -> Result<(), DatabaseError> {
+        /// ここは atomic に中身を消したいですね。。。 たぶん truncate(2) が呼ばれるのでしょうが、
+        /// atomic 保証はなさそうです。
         self.file.set_len(0)?;
         self.file.sync_all()?;
         Result::Ok(())
@@ -88,6 +90,9 @@ impl WALManager {
     }
 
     /// 現在ファイルシステム上に書き込まれているレコードを可能な限り取得し、ファイルをクリアする。
+    /// まあ WAL が小さいときはこれでも良いですが、トランザクションひとつずつ読んで適用するのが良いと思います。
+    /// さすがに WAL ファイルを少しずつ消すことは難しいので、最後にまとめてやるしかないですが。(
+    /// でもそうするとやはり同一ログの複数回適用が可能(or 避けられるよう)になっている必要はあります。
     pub fn read_log<K, V>(&mut self) -> Result<Vec<LogRecord<K, V>>, DatabaseError>
     where
         K: DeserializeOwned + Debug,
@@ -97,6 +102,7 @@ impl WALManager {
         while let Result::Ok(val) = self.read_log_entry() {
             result.push(val);
         }
+        /// 順番が違いますね。log を読む --> commit/abort 判断 --> 適用 --> log 削除。
         self.clear()?;
         return Result::Ok(result);
     }
