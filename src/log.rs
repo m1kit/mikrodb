@@ -1,9 +1,9 @@
 use crate::error::DatabaseError;
 
+use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
 use std::result::Result;
-use std::fmt::Debug;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::de::DeserializeOwned;
@@ -11,6 +11,16 @@ use serde::Serialize;
 use serde_json;
 use sha2::{Digest, Sha256};
 
+/// WALレコードを表す
+///
+/// # レコードタイプ
+/// 現在、6種類のレコードタイプをサポートする
+/// - Create: キーバリューペアの新規作成
+/// - Read: キーを元にバリューをルックアップする(Redoには使用しないが)
+/// - Update: キーに紐付くバリューの更新
+/// - Delete: キーを元にキーバリューペアの削除を行う
+/// - Commit: ファイルの開始、または直前のCommit/Abortからの変更を反映する
+/// - Abort: ファイルの開始、または直前のCommit/Abortからの変更を破棄する
 #[derive(PartialEq, Deserialize, Serialize, Debug)]
 pub enum LogRecord<K, V>
 where
@@ -25,11 +35,13 @@ where
     Abort,
 }
 
+/// WALレコードの読み書きに関する一連の手続きを表す
 pub struct WALManager {
     file: File,
 }
 
 impl WALManager {
+    /// WALマネージャを初期化する
     pub fn new(logpath: &str) -> Result<Self, DatabaseError> {
         let logfile = OpenOptions::new()
             .append(true)
@@ -39,12 +51,16 @@ impl WALManager {
         Result::Ok(WALManager { file: logfile })
     }
 
+    /// WALマネージャにより管理されるログをファイルシステム上・メモリ上から破棄する
     pub fn clear(&mut self) -> Result<(), DatabaseError> {
         self.file.set_len(0)?;
         self.file.sync_all()?;
         Result::Ok(())
     }
 
+    /// ログレコードをファイルシステムに書き込む
+    ///
+    /// フラグsyncを設定することで、fsyncにより確実に永続化されることが保証される。
     pub fn write_log<K, V>(
         &mut self,
         record: &LogRecord<K, V>,
@@ -71,6 +87,7 @@ impl WALManager {
         Result::Ok(())
     }
 
+    /// 現在ファイルシステム上に書き込まれているレコードを可能な限り取得し、ファイルをクリアする。
     pub fn read_log<K, V>(&mut self) -> Result<Vec<LogRecord<K, V>>, DatabaseError>
     where
         K: DeserializeOwned + Debug,
@@ -84,6 +101,7 @@ impl WALManager {
         return Result::Ok(result);
     }
 
+    /// 現在ファイルシステム上に書き込まれているレコードを1つ読み取る。
     fn read_log_entry<K, V>(&mut self) -> Result<LogRecord<K, V>, DatabaseError>
     where
         K: DeserializeOwned + Debug,

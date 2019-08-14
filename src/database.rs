@@ -5,14 +5,15 @@ use serde::Serialize;
 
 use std::cmp::Ord;
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt::Debug;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::result::Result;
-use std::fmt::Debug;
 
 pub trait Key: Value + Ord {}
 pub trait Value: Debug + Clone + Serialize + DeserializeOwned {}
 
+/// データベースを表す
 pub struct Database<K, V>
 where
     K: Key,
@@ -23,6 +24,7 @@ where
     data: BTreeMap<K, V>,
 }
 
+/// トランザクションを表す
 pub struct Transaction<'tx, K, V>
 where
     K: Key,
@@ -37,6 +39,13 @@ where
     K: Key,
     V: Value,
 {
+    /// データベースを初期化する
+    ///
+    /// これには、以下の手続きが含まれる
+    /// - ファイルシステム上に永続化されたデータベースの読み込み
+    /// - ファイルシステム上に永続化されたログファイルの読み込み
+    /// - ログファイル上の未反映の操作のRedo(Crash-recovery)
+    /// - Crash-recovery後のデータベースの永続化
     pub fn new(logpath: &str, datapath: &str) -> Result<Self, DatabaseError> {
         let wal = WALManager::new(logpath)?;
         let content = std::fs::read_to_string(datapath);
@@ -55,6 +64,7 @@ where
         Result::Ok(db)
     }
 
+    /// ファイルシステムおよびメモリ上からデータベースに関する内容を消去する
     pub fn clear(&mut self) -> Result<(), DatabaseError> {
         self.wal.clear()?;
         self.data.clear();
@@ -77,6 +87,7 @@ where
         Result::Ok(())
     }
 
+    /// クラッシュリカバリを行う
     fn crash_recover(&mut self) -> Result<(), DatabaseError> {
         let logs: Vec<LogRecord<K, V>> = self.wal.read_log()?;
         let mut commit: VecDeque<LogRecord<K, V>> = VecDeque::new();
@@ -109,6 +120,7 @@ where
         Result::Ok(())
     }
 
+    /// トランザクションを発行する
     pub fn begin_transaction<'tx>(&'tx mut self) -> Result<Transaction<'tx, K, V>, DatabaseError> {
         return Result::Ok(Transaction {
             writeset: self.data.clone(),
@@ -122,6 +134,7 @@ where
     K: Key,
     V: Value,
 {
+    /// データベースの永続化を行います
     fn drop(&mut self) {
         if let Result::Err(e) = self.exec_checkpointing() {
             println!("Error: {}", e.to_string());
@@ -134,6 +147,7 @@ where
     K: Key,
     V: Value,
 {
+    /// keyに対応する値をvalueとして新規設定する
     pub fn create(&mut self, key: K, value: V) -> Result<(), DatabaseError> {
         if self.writeset.contains_key(&key) {
             return Result::Err(DatabaseError::KeyDuplicationError);
@@ -149,6 +163,8 @@ where
         return Result::Ok(());
     }
 
+
+    /// keyに対応する値を読み取る
     pub fn read(&mut self, key: K) -> Result<V, DatabaseError> {
         let value = self
             .writeset
@@ -161,6 +177,7 @@ where
         return Result::Ok(value.clone());
     }
 
+    /// keyに対応する値をvalueとして更新する
     pub fn update(&mut self, key: K, value: V) -> Result<(), DatabaseError> {
         if !self.writeset.contains_key(&key) {
             return Result::Err(DatabaseError::KeyNotFoundError);
@@ -176,6 +193,7 @@ where
         return Result::Ok(());
     }
 
+    /// keyに対応する値を削除する
     pub fn delete(&mut self, key: K) -> Result<(), DatabaseError> {
         if !self.writeset.contains_key(&key) {
             return Result::Err(DatabaseError::KeyNotFoundError);
@@ -188,6 +206,7 @@ where
         return Result::Ok(());
     }
 
+    /// Commitする(トランザクションを反映する)
     pub fn commit(self) -> Result<(), DatabaseError> {
         let log: LogRecord<K, V> = LogRecord::Commit;
         self.database.wal.write_log(&log, true)?;
@@ -196,9 +215,9 @@ where
         return Result::Ok(());
     }
 
+    /// Abortする(トランザクションを破棄する)
     pub fn abort(self) -> Result<(), DatabaseError> {
-        let log: LogRecord<K, V> = LogRecord::Abort;
-        self.database.wal.write_log(&log, true)?;
+        // Drop時に自動でAbortされる
         return Result::Ok(());
     }
 }
@@ -208,6 +227,7 @@ where
     K: Key,
     V: Value,
 {
+    /// 明示的にCommitされないままDropした場合、Abort扱いとなる
     fn drop(&mut self) {
         let log: LogRecord<K, V> = LogRecord::Abort;
         if let Result::Err(e) = self.database.wal.write_log(&log, true) {
