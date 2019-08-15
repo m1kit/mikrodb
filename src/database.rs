@@ -10,14 +10,11 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::result::Result;
 
-pub trait Key: Value + Ord {}
-pub trait Value: Debug + Clone + Serialize + DeserializeOwned {}
-
 /// データベースを表す
 pub struct Database<K, V>
 where
-    K: Key,
-    V: Value,
+    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
+    V: Debug + Clone + Serialize + DeserializeOwned,
 {
     wal: WALManager,
     datapath: String,
@@ -27,8 +24,8 @@ where
 /// トランザクションを表す
 pub struct Transaction<'tx, K, V>
 where
-    K: Key,
-    V: Value,
+    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
+    V: Debug + Clone + Serialize + DeserializeOwned,
 {
     database: &'tx mut Database<K, V>,
     writeset: BTreeMap<K, V>,
@@ -36,8 +33,8 @@ where
 
 impl<K, V> Database<K, V>
 where
-    K: Key,
-    V: Value,
+    K: Debug + Clone + DeserializeOwned + Serialize + Ord,
+    V: Debug + Clone + DeserializeOwned + Serialize,
 {
     /// データベースを初期化する
     ///
@@ -131,8 +128,8 @@ where
 
 impl<K, V> Drop for Database<K, V>
 where
-    K: Key,
-    V: Value,
+    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
+    V: Debug + Clone + Serialize + DeserializeOwned,
 {
     /// データベースの永続化を行います
     fn drop(&mut self) {
@@ -144,8 +141,8 @@ where
 
 impl<'tx, K, V> Transaction<'tx, K, V>
 where
-    K: Key,
-    V: Value,
+    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
+    V: Debug + Clone + Serialize + DeserializeOwned,
 {
     /// keyに対応する値をvalueとして新規設定する
     pub fn create(&mut self, key: K, value: V) -> Result<(), DatabaseError> {
@@ -224,8 +221,8 @@ where
 
 impl<'tx, K, V> Drop for Transaction<'tx, K, V>
 where
-    K: Key,
-    V: Value,
+    K: Debug + Clone + Serialize + DeserializeOwned + Ord,
+    V: Debug + Clone + Serialize + DeserializeOwned,
 {
     /// 明示的にCommitされないままDropした場合、Abort扱いとなる
     fn drop(&mut self) {
