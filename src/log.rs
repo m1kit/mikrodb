@@ -97,7 +97,6 @@ impl WALManager {
         while let Result::Ok(val) = self.read_log_entry() {
             result.push(val);
         }
-        self.clear()?;
         return Result::Ok(result);
     }
 

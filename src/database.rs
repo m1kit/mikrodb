@@ -60,6 +60,7 @@ where
 
         db.crash_recover()?;
         db.exec_checkpointing()?;
+        wal.clear()?;
         Result::Ok(db)
     }
 
