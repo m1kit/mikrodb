@@ -213,7 +213,7 @@ where
             let log: LogRecord<K, V> = LogRecord::Delete { key: key.clone() };
             self.database.wal.write_log(&log, false)?;
         }
-        self.writeset.remove(&key);
+        self.writeset.insert(key, Option::None);
         return Result::Ok(());
     }
 
