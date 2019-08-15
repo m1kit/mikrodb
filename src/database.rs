@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
+
+use std::option::Option;
 use std::result::Result;
 
 /// データベースを表す
@@ -28,7 +30,7 @@ where
     V: Debug + Clone + Serialize + DeserializeOwned,
 {
     database: &'tx mut Database<K, V>,
-    writeset: BTreeMap<K, V>,
+    writeset: BTreeMap<K, Option<V>>,
 }
 
 impl<K, V> Database<K, V>
@@ -120,7 +122,7 @@ where
     /// トランザクションを発行する
     pub fn begin_transaction<'tx>(&'tx mut self) -> Result<Transaction<'tx, K, V>, DatabaseError> {
         return Result::Ok(Transaction {
-            writeset: self.data.clone(),
+            writeset: BTreeMap::new(),
             database: self,
         });
     }
@@ -144,9 +146,17 @@ where
     K: Debug + Clone + Serialize + DeserializeOwned + Ord,
     V: Debug + Clone + Serialize + DeserializeOwned,
 {
+    /// ログに書き込まず、keyに対応する値を読み取る
+    fn get_content(&mut self, key: &K) -> Option<V> {
+        return match self.writeset.get(&key) {
+            None => self.database.data.get(&key).map(|v| v.clone()),
+            Some(v) => v.clone(),
+        };
+    }
+
     /// keyに対応する値をvalueとして新規設定する
     pub fn create(&mut self, key: K, value: V) -> Result<(), DatabaseError> {
-        if self.writeset.contains_key(&key) {
+        if self.get_content(&key).is_some() {
             return Result::Err(DatabaseError::KeyDuplicationError);
         }
         {
@@ -156,27 +166,24 @@ where
             };
             self.database.wal.write_log(&log, false)?;
         }
-        self.writeset.insert(key, value);
+        self.writeset.insert(key, Option::Some(value));
         return Result::Ok(());
     }
 
-
     /// keyに対応する値を読み取る
     pub fn read(&mut self, key: K) -> Result<V, DatabaseError> {
-        let value = self
-            .writeset
-            .get(&key)
-            .ok_or(DatabaseError::KeyNotFoundError)?;
         {
             let log: LogRecord<K, V> = LogRecord::Read { key: key.clone() };
             self.database.wal.write_log(&log, false)?;
         }
-        return Result::Ok(value.clone());
+        return self
+            .get_content(&key)
+            .ok_or(DatabaseError::KeyNotFoundError);
     }
 
     /// keyに対応する値をvalueとして更新する
     pub fn update(&mut self, key: K, value: V) -> Result<(), DatabaseError> {
-        if !self.writeset.contains_key(&key) {
+        if self.get_content(&key).is_none() {
             return Result::Err(DatabaseError::KeyNotFoundError);
         }
         {
@@ -186,13 +193,13 @@ where
             };
             self.database.wal.write_log(&log, false)?;
         }
-        self.writeset.insert(key, value);
+        self.writeset.insert(key, Option::Some(value));
         return Result::Ok(());
     }
 
     /// keyに対応する値を削除する
     pub fn delete(&mut self, key: K) -> Result<(), DatabaseError> {
-        if !self.writeset.contains_key(&key) {
+         if self.get_content(&key).is_none() {
             return Result::Err(DatabaseError::KeyNotFoundError);
         }
         {
@@ -207,7 +214,16 @@ where
     pub fn commit(self) -> Result<(), DatabaseError> {
         let log: LogRecord<K, V> = LogRecord::Commit;
         self.database.wal.write_log(&log, true)?;
-        self.database.data = self.writeset.clone();
+        for (key, op) in &self.writeset {
+            match op {
+                Option::None => {
+                    self.database.data.remove(&key);
+                }
+                Option::Some(v) => {
+                    self.database.data.insert(key.clone(), v.clone());
+                }
+            }
+        }
         std::mem::forget(self); // Prevent abort caused by Drop
         return Result::Ok(());
     }
