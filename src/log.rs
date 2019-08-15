@@ -143,6 +143,7 @@ mod tests {
         };
         {
             let mut wal = WALManager::new("log_rw.log").unwrap();
+            wal.clear().unwrap();
             wal.write_log(&record, true).unwrap();
         }
         {

@@ -60,7 +60,7 @@ where
 
         db.crash_recover()?;
         db.exec_checkpointing()?;
-        wal.clear()?;
+        db.wal.clear()?;
         Result::Ok(db)
     }
 
@@ -93,32 +93,36 @@ where
     /// クラッシュリカバリを行う
     fn crash_recover(&mut self) -> Result<(), DatabaseError> {
         let logs: Vec<LogRecord<K, V>> = self.wal.read_log()?;
+        let mut queue: VecDeque<LogRecord<K, V>> = VecDeque::new();
         let mut commit: VecDeque<LogRecord<K, V>> = VecDeque::new();
         for log in logs {
             match log {
                 LogRecord::Commit => {
-                    while let Option::Some(v) = commit.pop_front() {
-                        match v {
-                            LogRecord::Create { key, value } => {
-                                self.data.insert(key, value);
-                            }
-                            LogRecord::Update { key, value } => {
-                                self.data.insert(key, value);
-                            }
-                            LogRecord::Delete { key } => {
-                                self.data.remove(&key);
-                            }
-                            _ => {}
-                        }
+                    while let Option::Some(v) = queue.pop_front() {
+                        commit.push_back(v);
                     }
                 }
                 LogRecord::Abort => {
-                    commit.clear();
+                    queue.clear();
                 }
                 _ => {
-                    commit.push_back(log);
+                    queue.push_back(log);
                 }
             };
+        }
+        for log in commit {
+            match log {
+                LogRecord::Create { key, value } => {
+                    self.data.insert(key, value);
+                }
+                LogRecord::Update { key, value } => {
+                    self.data.insert(key, value);
+                }
+                LogRecord::Delete { key } => {
+                    self.data.remove(&key);
+                }
+                _ => {}
+            }
         }
         Result::Ok(())
     }
