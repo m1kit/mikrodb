@@ -6,6 +6,7 @@ extern crate serde_derive;
 extern crate byteorder;
 extern crate serde_json;
 extern crate sha2;
+extern crate tempfile;
 
 pub mod database;
 pub mod error;

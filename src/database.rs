@@ -6,8 +6,9 @@ use serde::Serialize;
 use std::cmp::Ord;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
-use std::fs::OpenOptions;
+use std::fs::File;
 use std::io::prelude::*;
+use tempfile::NamedTempFile;
 
 use std::option::Option;
 use std::result::Result;
@@ -60,7 +61,6 @@ where
 
         db.crash_recover()?;
         db.exec_checkpointing()?;
-        db.wal.clear()?;
         Result::Ok(db)
     }
 
@@ -76,16 +76,15 @@ where
     }
 
     fn exec_checkpointing(&mut self) -> Result<(), DatabaseError> {
-        let mut datafile = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&self.datapath)?;
+        let mut file = NamedTempFile::new_in(std::env::current_dir()?)?;
         let content = serde_json::to_string(&self.data)?;
         let content = content.as_bytes();
 
-        datafile.write_all(content)?;
-        datafile.sync_all()?;
+        file.write_all(content)?;
+        file.persist(&self.datapath)?;
+
+        let file = File::open(&self.datapath)?;
+        file.sync_all()?;
         self.wal.clear()?;
         Result::Ok(())
     }

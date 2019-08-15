@@ -4,8 +4,10 @@ use std::convert::From;
 pub enum DatabaseError {
     #[fail(display = "Transaction log error")]
     TransactionLogError,
-    #[fail(display = "Failed to load configuration: {:?}", error)]
+    #[fail(display = "IO Error: {:?}", error)]
     IOError { error: std::io::Error },
+    #[fail(display = "IO Error: {:?}", error)]
+    PersistError { error: tempfile::PersistError },
     #[fail(display = "Invalid json format: {:?}", error)]
     JSONError { error: serde_json::Error },
     #[fail(display = "Invalid format: {:?}", error)]
@@ -41,5 +43,11 @@ impl From<std::string::FromUtf8Error> for DatabaseError {
         DatabaseError::InvalidLogError {
             message: "Invalid UTF-8 format".to_string(),
         }
+    }
+}
+
+impl From<tempfile::PersistError> for DatabaseError {
+    fn from(error: tempfile::PersistError) -> Self {
+        DatabaseError::PersistError { error }
     }
 }

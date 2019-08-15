@@ -10,6 +10,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json;
 use sha2::{Digest, Sha256};
+use tempfile::NamedTempFile;
 
 /// WALレコードを表す
 ///
@@ -38,6 +39,7 @@ where
 /// WALレコードの読み書きに関する一連の手続きを表す
 pub struct WALManager {
     file: File,
+    file_path: String,
 }
 
 impl WALManager {
@@ -48,12 +50,21 @@ impl WALManager {
             .create(true)
             .read(true)
             .open(logpath)?;
-        Result::Ok(WALManager { file: logfile })
+        Result::Ok(WALManager {
+            file: logfile,
+            file_path: logpath.to_string(),
+        })
     }
 
     /// WALマネージャにより管理されるログをファイルシステム上・メモリ上から破棄する
     pub fn clear(&mut self) -> Result<(), DatabaseError> {
-        self.file.set_len(0)?;
+        let file = NamedTempFile::new_in(std::env::current_dir()?)?;
+        file.persist(&self.file_path)?;
+        self.file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .read(true)
+            .open(&self.file_path)?;
         self.file.sync_all()?;
         Result::Ok(())
     }
