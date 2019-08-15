@@ -64,6 +64,9 @@ where
     }
 
     /// ファイルシステムおよびメモリ上からデータベースに関する内容を消去する
+    ///
+    /// これは主にテストコードの開始時に前回のテストの影響を無視できるように実装されたもので、
+    /// 実際の運用時の使用は想定されない
     pub fn clear(&mut self) -> Result<(), DatabaseError> {
         self.wal.clear()?;
         self.data.clear();
@@ -199,7 +202,7 @@ where
 
     /// keyに対応する値を削除する
     pub fn delete(&mut self, key: K) -> Result<(), DatabaseError> {
-         if self.get_content(&key).is_none() {
+        if self.get_content(&key).is_none() {
             return Result::Err(DatabaseError::KeyNotFoundError);
         }
         {
