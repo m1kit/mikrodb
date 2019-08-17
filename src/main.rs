@@ -13,7 +13,7 @@ fn main() {
             Result::Err(_) => {
                 println!("Record ({}, NA)", k);
                 tx.create(k, -1).unwrap();
-            },
+            }
             Result::Ok(v) => {
                 println!("Record ({}, {})", k, v);
             }
@@ -22,7 +22,7 @@ fn main() {
     tx.commit().unwrap();
 
     for v in 0..100000 {
-        println!("v = {}",v);
+        println!("v = {}", v);
         let mut tx = db.begin_transaction().unwrap();
         for k in 0..100000 {
             tx.update(k, v).unwrap();
